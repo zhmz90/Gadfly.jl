@@ -577,6 +577,11 @@ function apply_statistic(stat::TickStatistic,
         error("TickStatistic cannot be applied to subplot coordinates.")
     end
 
+    # don't clobber existing ticks
+    if getfield(aes, symbol(string(stat.out_var, "tick"))) != nothing
+        return
+    end
+
     in_group_var = symbol(string(stat.out_var, "group"))
     minval, maxval = nothing, nothing
     in_values = Any[]
@@ -1426,11 +1431,8 @@ function element_aesthetics(stat::JitterStatistic)
     return stat.vars
 end
 
-function apply_statistic(stat::JitterStatistic,
-                         scales::Dict{Symbol, Gadfly.ScaleElement},
-                         coord::Gadfly.CoordinateElement,
-                         aes::Gadfly.Aesthetics)
-    # find the minimum span between points
+
+function minimum_span(vars::Vector{Symbol}, aes::Gadfly.Aesthetics)
     span = nothing
     for var in stat.vars
         data = getfield(aes, var)
@@ -1451,7 +1453,14 @@ function apply_statistic(stat::JitterStatistic,
             span = dataspan
         end
     end
+end
 
+
+function apply_statistic(stat::JitterStatistic,
+                         scales::Dict{Symbol, Gadfly.ScaleElement},
+                         coord::Gadfly.CoordinateElement,
+                         aes::Gadfly.Aesthetics)
+    span = minimum_span(stat.vars, aes)
     if span == nothing
         return
     end
