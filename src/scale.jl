@@ -1,7 +1,7 @@
 
 module Scale
 
-using Color
+using Colors
 using Compat
 using Compose
 using DataArrays
@@ -13,7 +13,7 @@ import Gadfly: element_aesthetics, isconcrete, concrete_length,
                nonzero_length
 import Distributions: Distribution
 
-include("color.jl")
+include("color_misc.jl")
 
 
 # Return true if var is categorical.
@@ -127,7 +127,7 @@ immutable ContinuousScale <: Gadfly.ScaleElement
     maxvalue
     minticks
     maxticks
-    labels::Union(Nothing, Function)
+    labels::@compat(Union{(@compat Void), Function})
     format
     scalable
 
@@ -235,24 +235,14 @@ function apply_scale(scale::ContinuousScale,
             end
 
             T = Any
-            for (i, d) in enumerate(vals)
+            for d in vals
                 if isconcrete(d)
                     T = typeof(scale.trans.f(d))
                     break
                 end
             end
 
-            hasna = false
-            if isa(vals, AbstractDataArray)
-                for d in vals
-                    if isna(d)
-                        hasna = true
-                        break
-                    end
-                end
-            end
-
-            ds = hasna ? DataArray(T, length(vals)) : Array(T, length(vals))
+            ds = Gadfly.hasna(vals) ? DataArray(T, length(vals)) : Array(T, length(vals))
             apply_scale_typed!(ds, vals, scale)
 
             if var == :xviewmin || var == :xviewmax ||
@@ -294,13 +284,9 @@ function apply_scale(scale::ContinuousScale,
 end
 
 function apply_scale_typed!(ds, field, scale::ContinuousScale)
-    for (i, d) in enumerate(field)
-        if isconcrete(d)
-            ds[i] = scale.trans.f(d)
-            i += 1
-        else
-            ds[i] = d
-        end
+    for i in 1:length(field)
+        d = field[i]
+        ds[i] = isconcrete(d) ? scale.trans.f(d) : d
     end
 end
 
@@ -387,14 +373,14 @@ immutable DiscreteScale <: Gadfly.ScaleElement
     # an array of string labels, a vector of string labels of the same length
     # as the number of unique values in the discrete data, or nothing to use
     # the default labels.
-    labels::Union(Nothing, Function)
+    labels::@compat(Union{(@compat Void), Function})
 
     # If non-nothing, give values for the scale. Order will be respected and
     # anything in the data that's not represented in values will be set to NA.
-    levels::Union(Nothing, AbstractVector)
+    levels::@compat(Union{(@compat Void), AbstractVector})
 
     # If non-nothing, a permutation of the pool of values.
-    order::Union(Nothing, AbstractVector)
+    order::@compat(Union{(@compat Void), AbstractVector})
 
     function DiscreteScale(vals::Vector{Symbol};
                            labels=nothing, levels=nothing, order=nothing)
@@ -442,7 +428,7 @@ function apply_scale(scale::DiscreteScale, aess::Vector{Gadfly.Aesthetics},
                 function default_labeler(xs)
                     lvls = levels(disc_data)
                     vals = Any[1 <= x <= length(lvls) ? lvls[x] : "" for x in xs]
-                    if all([isa(val, FloatingPoint) for val in vals])
+                    if all([isa(val, AbstractFloat) for val in vals])
                         return showoff(vals)
                     else
                         return [string(val) for val in vals]
@@ -492,10 +478,10 @@ immutable DiscreteColorScale <: Gadfly.ScaleElement
 
     # If non-nothing, give values for the scale. Order will be respected and
     # anything in the data that's not represented in values will be set to NA.
-    levels::Union(Nothing, AbstractVector)
+    levels::@compat(Union{(@compat Void), AbstractVector})
 
     # If non-nothing, a permutation of the pool of values.
-    order::Union(Nothing, AbstractVector)
+    order::@compat(Union{(@compat Void), AbstractVector})
 
     # If true, order levels as they appear in the data
     preserve_order::Bool
@@ -516,8 +502,8 @@ end
 function color_discrete_hue(; levels=nothing, order=nothing,
                             preserve_order=true)
     DiscreteColorScale(
-        h -> convert(Vector{ColorValue},
-             distinguishable_colors(h, ColorValue[LCHab(70, 60, 240)],
+        h -> convert(Vector{Color},
+             distinguishable_colors(h, [LCHab(70, 60, 240)],
                                     transform=c -> deuteranopic(c, 0.5),
                                     lchoices=Float64[65, 70, 75, 80],
                                     cchoices=Float64[0, 50, 60, 70],
@@ -533,8 +519,10 @@ const color_discrete = color_discrete_hue
 @deprecate discrete_color(; levels=nothing, order=nothing, preserve_order=true) color_discrete(; levels=levels, order=order, preserve_order=preserve_order)
 
 
-function color_discrete_manual(colors...; levels=nothing, order=nothing)
-    cs = ColorValue[color(c) for c in colors]
+color_discrete_manual(colors...; levels=nothing, order=nothing) = color_discrete_manual(map(Gadfly.parse_colorant, colors)...; levels=levels, order=order)
+
+function color_discrete_manual(colors::Color...; levels=nothing, order=nothing)
+    cs = [colors...]
     function f(n)
         distinguishable_colors(n, cs)
     end
@@ -703,8 +691,8 @@ function apply_scale(scale::ContinuousColorScale,
         aes.color = DataArray(RGB{Float32}, length(data.color))
         apply_scale_typed!(aes.color, data.color, scale, cmin, cspan)
 
-        color_key_colors = Dict{ColorValue, Float64}()
-        color_key_labels = Dict{ColorValue, String}()
+        color_key_colors = Dict{Color, Float64}()
+        color_key_labels = Dict{Color, AbstractString}()
 
         tick_labels = identity_formatter(ticks)
         for (i, j, label) in zip(ticks, ticks[2:end], tick_labels)
@@ -825,4 +813,3 @@ end
 
 
 end # module Scale
-

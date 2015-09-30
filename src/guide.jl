@@ -2,7 +2,7 @@
 module Guide
 
 using Compat
-using Color
+using Colors
 using Compose
 using DataStructures
 using Gadfly
@@ -45,6 +45,10 @@ end
 
 const background = PanelBackground
 
+function render(guide::Gadfly.GuideElement, theme::Gadfly.Theme,
+                aes::Gadfly.Aesthetics, dynamic::Bool=true)
+    render(guide, theme, aes)
+end
 
 function render(guide::PanelBackground, theme::Gadfly.Theme,
                 aes::Gadfly.Aesthetics)
@@ -73,9 +77,9 @@ function render(guide::ZoomSlider, theme::Gadfly.Theme,
     slide_pad = 0.5mm
     button_size = 4mm
     slider_size = 20mm
-    background_color = "#eaeaea"
-    foreground_color = "#6a6a6a"
-    highlight_color = "#cd5c5c";
+    background_color = colorant"#eaeaea"
+    foreground_color = colorant"#6a6a6a"
+    highlight_color = colorant"#cd5c5c";
 
     minus_button = compose!(
         context(1w - edge_pad - 2*button_size - slider_size,
@@ -169,7 +173,7 @@ end
 
 
 immutable ColorKey <: Gadfly.GuideElement
-    title::Union(String, Nothing)
+    title::@compat(Union{AbstractString, (@compat Void)})
 
     function ColorKey(title=nothing)
         new(title)
@@ -182,8 +186,8 @@ const colorkey = ColorKey
 
 # A helper for render(::ColorKey) for rendering guides for discrete color
 # scales.
-function render_discrete_color_key(colors::Vector{ColorValue},
-                                   labels::OrderedDict{ColorValue, String},
+function render_discrete_color_key{C<:Color}(colors::Vector{C},
+                                   labels::OrderedDict{Color, AbstractString},
                                    aes_color_label,
                                    title_ctx::Context,
                                    title_width::Measure,
@@ -305,7 +309,7 @@ end
 # A helper for render(::ColorKey) for rendering guides for continuous color
 # scales.
 function render_continuous_color_key(colors::Dict,
-                                     labels::OrderedDict{ColorValue, String},
+                                     labels::OrderedDict{Color, AbstractString},
                                      color_function::Function,
                                      title_context::Context,
                                      title_width::Measure,
@@ -345,7 +349,7 @@ function render_continuous_color_key(colors::Dict,
          (context(),
           line([[(0, 1 - y), (swatch_width, 1 - y)] for y in values(colors)]),
           linewidth(theme.grid_line_width),
-          stroke(color("white"))),
+          stroke(colorant"white")),
 
          fill([color_function((i-1) / (theme.key_color_gradations - 1))
                for i in 1:theme.key_color_gradations]),
@@ -368,7 +372,7 @@ function render_continuous_color_key(colors::Dict,
 end
 
 
-function render_colorkey_title(title::String, theme::Gadfly.Theme)
+function render_colorkey_title(title::AbstractString, theme::Gadfly.Theme)
     title_width, title_height = max_text_extents(theme.key_title_font,
                                                  theme.key_title_font_size,
                                                  title)
@@ -403,9 +407,9 @@ function render(guide::ColorKey, theme::Gadfly.Theme,
         return PositionedGuide[]
     end
 
-    used_colors = Set{ColorValue}()
-    colors = Array(ColorValue, 0) # to preserve ordering
-    labels = OrderedDict{ColorValue, Set{String}}()
+    used_colors = Set{Color}()
+    colors = Array(Color, 0) # to preserve ordering
+    labels = OrderedDict{Color, Set{AbstractString}}()
 
     continuous_guide = false
     guide_title = guide.title
@@ -425,7 +429,7 @@ function render(guide::ColorKey, theme::Gadfly.Theme,
         if !in(color, used_colors)
             push!(used_colors, color)
             push!(colors, color)
-            labels[color] = Set{String}()
+            labels[color] = Set{AbstractString}()
             push!(labels[color], label)
         else
             push!(labels[color], label)
@@ -436,7 +440,7 @@ function render(guide::ColorKey, theme::Gadfly.Theme,
         guide_title = "Color"
     end
 
-    pretty_labels = OrderedDict{ColorValue, String}()
+    pretty_labels = OrderedDict{Color, AbstractString}()
     for (color, label) in labels
         pretty_labels[color] = join(labels[color], ", ")
     end
@@ -476,12 +480,14 @@ function render(guide::ColorKey, theme::Gadfly.Theme,
 end
 
 
-immutable ManualColorKey <: Gadfly.GuideElement
-    title::Union(String, Nothing)
-    labels::Vector{String}
-    colors::Vector
+immutable ManualColorKey{C<:Color} <: Gadfly.GuideElement
+    title::@compat(Union{AbstractString, (@compat Void)})
+    labels::Vector{AbstractString}
+    colors::Vector{C}
 end
 
+ManualColorKey{C<:Color}(title, labels, colors::Vector{C}) = ManualColorKey{C}(title, labels, colors)
+ManualColorKey(title, labels, colors) = ManualColorKey(title, labels, Gadfly.parse_colorant_vec(colors...))
 
 const manual_color_key = ManualColorKey
 
@@ -504,13 +510,12 @@ function render(guide::ManualColorKey, theme::Gadfly.Theme,
 
     title_context, title_width = render_colorkey_title(guide_title, theme)
 
-    colors = ColorValue[color(c) for c in guide.colors]
-    labels = OrderedDict{ColorValue, String}()
-    for (c, l) in zip(colors, guide.labels)
+    labels = OrderedDict{Color, AbstractString}()
+    for (c, l) in zip(guide.colors, guide.labels)
         labels[c] = l
     end
 
-    ctxs = render_discrete_color_key(colors, labels, nothing, title_context, title_width, theme)
+    ctxs = render_discrete_color_key(guide.colors, labels, nothing, title_context, title_width, theme)
 
     position = right_guide_position
     if theme.key_position == :left
@@ -529,12 +534,15 @@ end
 
 immutable XTicks <: Gadfly.GuideElement
     label::Bool
-    ticks::Union(Nothing, AbstractArray)
+    ticks::@compat(Union{(@compat Void), Symbol, AbstractArray})
     orientation::Symbol
 
     function XTicks(; label::Bool=true,
-                      ticks::Union(Nothing, AbstractArray)=nothing,
+                      ticks::@compat(Union{(@compat Void), Symbol, AbstractArray})=:auto,
                       orientation::Symbol=:auto)
+        if isa(ticks, Symbol) && ticks != :auto
+            error("$(ticks) is not a valid value for the `ticks` parameter")
+        end
         return new(label, ticks, orientation)
     end
 end
@@ -543,12 +551,19 @@ const xticks = XTicks
 
 
 function default_statistic(guide::XTicks)
-    return Stat.xticks(ticks=guide.ticks)
+    if guide.ticks == nothing
+        return Stat.identity()
+    else
+        return Stat.xticks(ticks=guide.ticks)
+    end
 end
 
 
 function render(guide::XTicks, theme::Gadfly.Theme,
-                aes::Gadfly.Aesthetics)
+                aes::Gadfly.Aesthetics, dynamic::Bool=true)
+    if guide.ticks == nothing
+        return PositionedGuide[]
+    end
 
     if Gadfly.issomething(aes.xtick)
         ticks = aes.xtick
@@ -556,12 +571,12 @@ function render(guide::XTicks, theme::Gadfly.Theme,
         scale = aes.xtickscale
 
         T = eltype(aes.xtick)
-        labels = String[]
+        labels = AbstractString[]
         for scale_ticks in groupby(x -> x[1], zip(scale, ticks))
             append!(labels, aes.xtick_label(T[t for (s, t) in scale_ticks]))
         end
     else
-        labels = String[]
+        labels = AbstractString[]
         ticks = Any[]
         tickvisibility = Bool[]
         scale = Any[]
@@ -592,21 +607,24 @@ function render(guide::XTicks, theme::Gadfly.Theme,
         strokedash(theme.grid_strokedash),
         svgclass("guide xgridlines yfixed"))
 
-    dynamic_grid_lines = compose!(
-        context(withjs=true),
-        line([[(t, 0h), (t, 1h)] for t in grids]),
-        visible(gridvisibility),
-        stroke(theme.grid_color),
-        linewidth(theme.grid_line_width),
-        strokedash(theme.grid_strokedash),
-        svgclass("guide xgridlines yfixed"),
-        svgattribute("gadfly:scale", scale),
-        jsplotdata("focused_xgrid_color",
-                   "\"#$(hex(theme.grid_color_focused))\""),
-        jsplotdata("unfocused_xgrid_color",
-                   "\"#$(hex(theme.grid_color))\""))
-
-    grid_lines = compose!(context(), static_grid_lines, dynamic_grid_lines)
+    if dynamic
+        dynamic_grid_lines = compose!(
+            context(withjs=true),
+            line([[(t, 0h), (t, 1h)] for t in grids]),
+            visible(gridvisibility),
+            stroke(theme.grid_color),
+            linewidth(theme.grid_line_width),
+            strokedash(theme.grid_strokedash),
+            svgclass("guide xgridlines yfixed"),
+            svgattribute("gadfly:scale", scale),
+            jsplotdata("focused_xgrid_color",
+                       "\"#$(hex(theme.grid_color_focused))\""),
+            jsplotdata("unfocused_xgrid_color",
+                       "\"#$(hex(theme.grid_color))\""))
+        grid_lines = compose!(context(), static_grid_lines, dynamic_grid_lines)
+    else
+        grid_lines = compose!(context(), static_grid_lines)
+    end
 
     if !guide.label
         return [PositionedGuide([grid_lines], 0, under_guide_position)]
@@ -696,12 +714,15 @@ end
 
 immutable YTicks <: Gadfly.GuideElement
     label::Bool
-    ticks::Union(Nothing, AbstractArray)
+    ticks::@compat(Union{(@compat Void), Symbol, AbstractArray})
     orientation::Symbol
 
     function YTicks(; label::Bool=true,
-                      ticks::Union(Nothing, AbstractArray)=nothing,
+                      ticks::@compat(Union{(@compat Void), Symbol, AbstractArray})=:auto,
                       orientation::Symbol=:horizontal)
+        if isa(ticks, Symbol) && ticks != :auto
+            error("$(ticks) is not a valid value for the `ticks` parameter")
+        end
         new(label, ticks, orientation)
     end
 end
@@ -711,24 +732,31 @@ const yticks = YTicks
 
 
 function default_statistic(guide::YTicks)
-    Stat.yticks(ticks=guide.ticks)
+    if guide.ticks == nothing
+        return Stat.identity()
+    else
+        return Stat.yticks(ticks=guide.ticks)
+    end
 end
 
 
 function render(guide::YTicks, theme::Gadfly.Theme,
-                aes::Gadfly.Aesthetics)
+                aes::Gadfly.Aesthetics, dynamic::Bool=true)
+    if guide.ticks == nothing
+        return PositionedGuide[]
+    end
 
     if Gadfly.issomething(aes.ytick)
         ticks = aes.ytick
         tickvisibility = aes.ytickvisible
         scale = aes.ytickscale
         T = eltype(aes.ytick)
-        labels = String[]
+        labels = AbstractString[]
         for scale_ticks in groupby(x -> x[1], zip(scale, ticks))
             append!(labels, aes.ytick_label(T[t for (s, t) in scale_ticks]))
         end
     else
-        labels = String[]
+        labels = AbstractString[]
         ticks = Any[]
         tickvisibility = Bool[]
         scale = Any[]
@@ -759,21 +787,24 @@ function render(guide::YTicks, theme::Gadfly.Theme,
         strokedash(theme.grid_strokedash),
         svgclass("guide ygridlines xfixed"))
 
-    dynamic_grid_lines = compose!(
-        context(withjs=true),
-        line([[(0w, t), (1w, t)] for t in grids]),
-        visible(gridvisibility),
-        stroke(theme.grid_color),
-        linewidth(theme.grid_line_width),
-        strokedash(theme.grid_strokedash),
-        svgclass("guide ygridlines xfixed"),
-        svgattribute("gadfly:scale", scale),
-        jsplotdata("focused_ygrid_color",
-                   "\"#$(hex(theme.grid_color_focused))\""),
-        jsplotdata("unfocused_ygrid_color",
+    if dynamic
+        dynamic_grid_lines = compose!(
+            context(withjs=true),
+            line([[(0w, t), (1w, t)] for t in grids]),
+            visible(gridvisibility),
+            stroke(theme.grid_color),
+            linewidth(theme.grid_line_width),
+            strokedash(theme.grid_strokedash),
+            svgclass("guide ygridlines xfixed"),
+            svgattribute("gadfly:scale", scale),
+            jsplotdata("focused_ygrid_color",
+                   "\"#$(    hex(theme.grid_color_focused))\""),
+            jsplotdata("unfocused_ygrid_color",
                    "\"#$(hex(theme.grid_color))\""))
-
-    grid_lines = compose!(context(), static_grid_lines, dynamic_grid_lines)
+        grid_lines = compose!(context(), static_grid_lines, dynamic_grid_lines)
+    else
+        grid_lines = compose!(context(), static_grid_lines)
+    end
 
     if !guide.label
         return [PositionedGuide([grid_lines], 0, under_guide_position)]
@@ -865,7 +896,7 @@ end
 
 # X-axis label Guide
 immutable XLabel <: Gadfly.GuideElement
-    label::Union(Nothing, String)
+    label::@compat(Union{(@compat Void), AbstractString})
     orientation::Symbol
 
     function XLabel(label; orientation::Symbol=:auto)
@@ -930,7 +961,7 @@ end
 
 # Y-axis label Guide
 immutable YLabel <: Gadfly.GuideElement
-    label::Union(Nothing, String)
+    label::@compat(Union{(@compat Void), AbstractString})
     orientation::Symbol
 
     function YLabel(label; orientation::Symbol=:auto)
@@ -988,7 +1019,7 @@ end
 
 # Title Guide
 immutable Title <: Gadfly.GuideElement
-    label::Union(Nothing, String)
+    label::@compat(Union{(@compat Void), AbstractString})
 end
 
 const title = Title
@@ -1129,6 +1160,7 @@ function layout_guides(plot_context::Context,
                     """
                     mouseenter(Gadfly.plot_mouseover)
                     .mouseleave(Gadfly.plot_mouseout)
+                    .dblclick(Gadfly.plot_dblclick)
                     .mousewheel(Gadfly.guide_background_scroll)
                     .drag(Gadfly.guide_background_drag_onmove,
                           Gadfly.guide_background_drag_onstart,
@@ -1155,4 +1187,3 @@ end
 
 
 end # module Guide
-

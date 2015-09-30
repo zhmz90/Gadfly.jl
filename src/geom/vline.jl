@@ -1,11 +1,13 @@
 
 immutable VLineGeometry <: Gadfly.GeometryElement
-    color::Union(ColorValue, Nothing)
-    size::Union(Measure, Nothing)
+    color::@compat(Union{Color, (@compat Void)})
+    size::@compat(Union{Measure, (@compat Void)})
+    tag::Symbol
 
     function VLineGeometry(; color=nothing,
-                           size::Union(Measure, Nothing)=nothing)
-        new(color === nothing ? nothing : Color.color(color), size)
+                           size::@compat(Union{Measure, (@compat Void)})=nothing,
+                           tag::Symbol=empty_tag)
+        new(color === nothing ? nothing : Colors.color(color), size, tag)
     end
 end
 
@@ -26,7 +28,7 @@ function render(geom::VLineGeometry, theme::Gadfly.Theme, aes::Gadfly.Aesthetics
 
     return compose!(
         context(),
-        Compose.line([[(x, 0h), (x, 1h)] for x in aes.xintercept]),
+        Compose.line([[(x, 0h), (x, 1h)] for x in aes.xintercept], geom.tag),
         stroke(color),
         linewidth(size),
         svgclass("yfixed"))

@@ -8,9 +8,11 @@ immutable LineGeometry <: Gadfly.GeometryElement
 
     order::Int
 
+    tag::Symbol
+
     function LineGeometry(default_statistic=Gadfly.Stat.identity();
-                          preserve_order=false, order=2)
-        new(default_statistic, preserve_order, order)
+                          preserve_order=false, order=2, tag=empty_tag)
+        new(default_statistic, preserve_order, order, tag)
     end
 end
 
@@ -85,7 +87,7 @@ function render(geom::LineGeometry, theme::Gadfly.Theme, aes::Gadfly.Aesthetics)
         if !geom.preserve_order
             p = sortperm(aes.x)
             aes_group = aes.group[p]
-            aes_color = aes.color[p]
+            aes_color = length(aes.color) > 1 ? aes.color[p] : aes.color
             aes_x = aes.x[p]
             aes_y = aes.y[p]
         else
@@ -96,6 +98,9 @@ function render(geom::LineGeometry, theme::Gadfly.Theme, aes::Gadfly.Aesthetics)
         end
 
         # organize x, y pairs into lines
+        if length(aes_color) < length(aes_group)
+            aes_color = collect(take(cycle(aes_color), length(aes_group)))
+        end
         p = sortperm(collect((@compat Tuple{GT, CT}),zip(aes_group, aes_color)),
                      lt=Gadfly.group_color_isless)
         permute!(aes_group, p)
@@ -131,7 +136,7 @@ function render(geom::LineGeometry, theme::Gadfly.Theme, aes::Gadfly.Aesthetics)
         classes = [string("geometry ", svg_color_class_from_label(aes.color_label([c])[1]))
                    for (c, g) in zip(points_colors, points_groups)]
 
-        ctx = compose!(ctx, Compose.line(points),
+        ctx = compose!(ctx, Compose.line(points,geom.tag),
                       stroke(points_colors),
                       svgclass(classes))
 
@@ -143,7 +148,7 @@ function render(geom::LineGeometry, theme::Gadfly.Theme, aes::Gadfly.Aesthetics)
             sort!(points, by=first)
         end
 
-        ctx = compose!(ctx, Compose.line(points),
+        ctx = compose!(ctx, Compose.line(points,geom.tag),
                        stroke(aes.color[1]),
                        svgclass("geometry"))
     else
@@ -190,12 +195,10 @@ function render(geom::LineGeometry, theme::Gadfly.Theme, aes::Gadfly.Aesthetics)
         classes = [string("geometry ", svg_color_class_from_label(aes.color_label([c])[1]))
                    for c in points_colors]
 
-        ctx = compose!(ctx, Compose.line(points),
+        ctx = compose!(ctx, Compose.line(points,geom.tag),
                       stroke(points_colors),
                       svgclass(classes))
     end
 
     return compose!(ctx, fill(nothing), linewidth(theme.line_width))
 end
-
-

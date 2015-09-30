@@ -1,7 +1,7 @@
 
 module Geom
 
-using Color
+using Colors
 using Compat
 using Compose
 using DataArrays
@@ -15,6 +15,15 @@ import Gadfly: render, layers, element_aesthetics, inherit, escape_id,
                concretize
 import Iterators
 import Iterators: cycle, product, distinct, takestrict, chain, repeated
+
+const empty_tag = symbol("")
+
+function subtags(parent_tag, suffixes...)
+    if parent_tag == empty_tag
+        return map(s->empty_tag, suffixes)
+    end
+    return map(s->symbol(string(parent_tag, "#", s)), suffixes)
+end
 
 
 # Geometry that renders nothing.
@@ -32,8 +41,8 @@ end
 # Subplot geometries require some more arguments to render. A simpler render
 # function is defined and passed through to here for non-subplot geometries.
 function render(geom::Gadfly.GeometryElement, theme::Gadfly.Theme, aes::Gadfly.Aesthetics,
-                subplot_layer_aess::Union(Nothing, Vector{Gadfly.Aesthetics}),
-                subplot_layer_datas::Union(Nothing, Vector{Gadfly.Data}),
+                subplot_layer_aess::@compat(Union{(@compat Void), Vector{Gadfly.Aesthetics}}),
+                subplot_layer_datas::@compat(Union{(@compat Void), Vector{Gadfly.Data}}),
                 scales::Dict{Symbol, ScaleElement})
     render(geom, theme, aes)
 end
@@ -62,4 +71,3 @@ include("geom/polygon.jl")
 include("geom/beeswarm.jl")
 
 end # module Geom
-

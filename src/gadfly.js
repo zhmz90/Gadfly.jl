@@ -161,6 +161,10 @@ Gadfly.plot_mouseover = function(event) {
         .animate({opacity: 1.0}, 250);
 };
 
+// Reset pan and zoom on double click
+Gadfly.plot_dblclick = function(event) {
+  set_plot_pan_zoom(this.plotroot(), 0.0, 0.0, 1.0);
+};
 
 // Unemphasize grid lines on mouse out.
 Gadfly.plot_mouseout = function(event) {
@@ -598,7 +602,7 @@ Gadfly.guide_background_scroll = function(event) {
             root.data("min_scale"),
             Math.min(root.data("max_scale"), new_scale))
         update_plot_scale(root, new_scale);
-        event.stopPropagation();
+        event.preventDefault();
     }
 };
 

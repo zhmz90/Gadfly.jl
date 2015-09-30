@@ -4,7 +4,7 @@
 # little opaque because I want to avoid assuming the log function is defined
 # over typeof(xspan)
 function bounding_order_of_magnitude{DT}(xspan::DT)
-    one_dt = one(DT)
+    one_dt = convert(DT, one(DT))
 
     a = 1
     step = 1
@@ -71,7 +71,7 @@ function optimize_ticks_typed{T}(x_min::T, x_max::T, extend_ticks,
                            granularity_weight::Float64, simplicity_weight::Float64,
                            coverage_weight::Float64, niceness_weight::Float64,
                            strict_span)
-    one_t = one(T)
+    one_t = convert(T, one(T))
     if x_max - x_min < eps()*one_t
         R = typeof(1.0 * one_t)
         return R[x_min], x_min - one_t, x_min + one_t
@@ -158,14 +158,20 @@ function optimize_ticks_typed{T}(x_min::T, x_max::T, extend_ticks,
         viewmin, viewmax = S[1], S[end]
     end
 
-    S, viewmin, viewmax
+    if strict_span
+        viewmin = max(viewmin, x_min)
+        viewmax = min(viewmax, x_max)
+    end
+
+    return S, viewmin, viewmax
 end
 
 
 function optimize_ticks(x_min::Date, x_max::Date; extend_ticks::Bool=false,
                         k_min=nothing, k_max=nothing, scale=:auto,
                         granularity_weight=nothing, simplicity_weight=nothing,
-                        coverage_weight=nothing, niceness_weight=nothing)
+                        coverage_weight=nothing, niceness_weight=nothing,
+                        strict_span=false)
     return optimize_ticks(convert(DateTime, x_min), convert(DateTime, x_max),
                           extend_ticks=extend_ticks, scale=scale)
 end
@@ -174,7 +180,8 @@ end
 function optimize_ticks(x_min::DateTime, x_max::DateTime; extend_ticks::Bool=false,
                         k_min=nothing, k_max=nothing, scale=:auto,
                         granularity_weight=nothing, simplicity_weight=nothing,
-                        coverage_weight=nothing, niceness_weight=nothing)
+                        coverage_weight=nothing, niceness_weight=nothing,
+                        strict_span=false)
     if x_min == x_max
         x_max += Second(1)
     end
