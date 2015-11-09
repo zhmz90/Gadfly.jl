@@ -5,16 +5,16 @@ immutable VLineGeometry <: Gadfly.GeometryElement
     tag::Symbol
 
     function VLineGeometry(; color=nothing,
-                           size::@compat(Union{Measure, (@compat Void)})=nothing,
+                           size::Union{Measure, Void}=nothing,
                            tag::Symbol=empty_tag)
-        new(color === nothing ? nothing : Colors.color(color), size, tag)
+        new(color === nothing ? nothing : parse(Colorant, color), size, tag)
     end
 end
 
 const vline = VLineGeometry
 
 
-    function element_aesthetics(::VLineGeometry)
+function element_aesthetics(::VLineGeometry)
     [:xintercept]
 end
 

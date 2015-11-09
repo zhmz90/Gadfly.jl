@@ -202,7 +202,7 @@ function render_discrete_color_key{C<:Color}(colors::Vector{C},
                            values(labels)...)
 
     ypad = 1.0mm
-    title_height = title_ctx.box.height
+    title_height = title_ctx.box.a[2]
     entry_height = maximum([height for (width, height) in extents]) + ypad
     swatch_size = entry_height / 2
 
@@ -318,7 +318,7 @@ function render_continuous_color_key(colors::Dict,
                                                  values(labels)...)
 
     numlabels = length(labels)
-    title_height = title_context.box.height
+    title_height = title_context.box.a[2]
     total_height = 1.5 * numlabels * entry_height + title_height
     swatch_width = entry_height / 2
     xoff = 2mm
@@ -461,6 +461,17 @@ function render(guide::ColorKey, theme::Gadfly.Theme,
                                          aes.color_label,
                                          title_context,
                                          title_width, theme)
+    end
+
+    if aes.shape != nothing
+        # TODO: Draw key for shapes. We need to think about how to make this
+        # work. Do we need to optimize number of columns for shape and size
+        # keys? I'm guessing it's not worth it.
+        #
+        # In that case I think we'll have different paths depending on whether
+        # there is a color key or not. If there is, we need to position shape
+        # and size keys in the deferred contexts. If there isn't we lay them out
+        # statically with hstack.
     end
 
     position = right_guide_position
@@ -1045,6 +1056,49 @@ function render(guide::Title, theme::Gadfly.Theme,
 end
 
 
+immutable XRug <: Gadfly.GuideElement
+end
+
+const xrug = XRug
+
+
+function render(guide::XRug, theme::Gadfly.Theme,
+                aes::Gadfly.Aesthetics)
+    Gadfly.assert_aesthetics_defined("Guide.xrug", aes, :x)
+    padding = 0.4mm
+
+    ctx = compose!(context(minheight=theme.rug_size),
+        (context(clip=true),
+         line([[(x, 0h + padding), (x, 1h - padding)] for x in aes.x]),
+         stroke(theme.default_color),
+         linewidth(theme.line_width),
+         svgclass("guide yfixed")))
+
+    return [PositionedGuide([ctx], 20, bottom_guide_position)]
+end
+
+
+immutable YRug <: Gadfly.GuideElement
+end
+
+const yrug = YRug
+
+
+function render(guide::YRug, theme::Gadfly.Theme,
+                aes::Gadfly.Aesthetics)
+    Gadfly.assert_aesthetics_defined("Guide.yrug", aes, :y)
+    padding = 0.4mm
+
+    ctx = compose!(context(minwidth=theme.rug_size, clip=true),
+        line([[(0w + padding, y), (1w - padding, y)] for y in aes.y]),
+        stroke(theme.default_color),
+        linewidth(theme.line_width),
+        svgclass("guide xfixed"))
+
+    return [PositionedGuide([ctx], 20, right_guide_position)]
+end
+
+
 # Arrange a plot with its guides
 #
 # Args:
@@ -1089,7 +1143,8 @@ function layout_guides(plot_context::Context,
     aspect_ratio = nothing
     if isa(coord, Gadfly.Coord.cartesian)
         if coord.fixed
-            aspect_ratio = abs(plot_context.units.width / plot_context.units.height)
+            aspect_ratio = isnull(plot_context.units) ? 1.0 :
+                     abs(get(plot_context.units).width / get(plot_context.units).height)
         elseif coord.aspect_ratio != nothing
             aspect_ratio = coord.aspect_ratio
         end
@@ -1100,8 +1155,8 @@ function layout_guides(plot_context::Context,
     i = 1
     for (ctxs, order) in guides[top_guide_position]
         for ctx in ctxs
-            if ctx.units == Compose.nil_unit_box
-                ctx.units = UnitBox(plot_units, toppad=0mm, bottompad=0mm)
+            if isnull(ctx.units) && !isnull(plot_units)
+                ctx.units = UnitBox(get(plot_units), toppad=0mm, bottompad=0mm)
             end
         end
 
@@ -1111,8 +1166,8 @@ function layout_guides(plot_context::Context,
     i += 1
     for (ctxs, order) in guides[bottom_guide_position]
         for ctx in ctxs
-            if ctx.units == Compose.nil_unit_box
-                ctx.units = UnitBox(plot_units, toppad=0mm, bottompad=0mm)
+            if isnull(ctx.units) && !isnull(plot_units)
+                ctx.units = UnitBox(get(plot_units), toppad=0mm, bottompad=0mm)
             end
         end
 
@@ -1123,8 +1178,8 @@ function layout_guides(plot_context::Context,
     j = 1
     for (ctxs, order) in guides[left_guide_position]
         for ctx in ctxs
-            if ctx.units == Compose.nil_unit_box
-                ctx.units = UnitBox(plot_units, leftpad=0mm, rightpad=0mm)
+            if isnull(ctx.units) && !isnull(plot_units)
+                ctx.units = UnitBox(get(plot_units), leftpad=0mm, rightpad=0mm)
             end
         end
 
@@ -1134,8 +1189,8 @@ function layout_guides(plot_context::Context,
     j += 1
     for (ctxs, order) in guides[right_guide_position]
         for ctx in ctxs
-            if ctx.units == Compose.nil_unit_box
-                ctx.units = UnitBox(plot_units, leftpad=0mm, rightpad=0mm)
+            if isnull(ctx.units) && !isnull(plot_units)
+                ctx.units = UnitBox(get(plot_units), leftpad=0mm, rightpad=0mm)
             end
         end
 

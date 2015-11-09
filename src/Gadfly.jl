@@ -58,6 +58,7 @@ include("misc.jl")
 include("ticks.jl")
 include("color_misc.jl")
 include("varset.jl")
+include("shapes.jl")
 include("theme.jl")
 include("data.jl")
 include("aesthetics.jl")
@@ -304,7 +305,7 @@ end
 # Returns:
 #   A Plot object.
 #
-function plot(data_source::@compat(Union{Nothing, AbstractMatrix, AbstractDataFrame}),
+function plot(data_source::@compat(Union{(@compat Void), AbstractMatrix, AbstractDataFrame}),
               mapping::Dict, elements::ElementOrFunctionOrLayers...)
     mapping = cleanmapping(mapping)
     p = Plot()
@@ -1048,6 +1049,7 @@ const default_aes_scales = @compat Dict{Symbol, Dict}(
                                         :xgroup      => Scale.xgroup(),
                                         :ygroup      => Scale.ygroup(),
                                         :color       => Scale.color_continuous(),
+                                        :shape       => Scale.shape_discrete(),
                                         :group       => Scale.group_discrete(),
                                         :label       => Scale.label(),
                                         :size        => Scale.size_continuous()),
@@ -1062,6 +1064,7 @@ const default_aes_scales = @compat Dict{Symbol, Dict}(
                                           :xgroup     => Scale.xgroup(),
                                           :ygroup     => Scale.ygroup(),
                                           :color      => Scale.color_discrete(),
+                                          :shape      => Scale.shape_discrete(),
                                           :group      => Scale.group_discrete(),
                                           :label      => Scale.label()))
 

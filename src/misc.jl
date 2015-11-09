@@ -289,7 +289,7 @@ end
 Maybe(T) = @compat(Union{T, (@compat Void)})
 
 
-function lerp(x::Float64, a::Float64, b::Float64)
+function lerp(x::Float64, a, b)
     a + (b - a) * max(min(x, 1.0), 0.0)
 end
 
@@ -371,6 +371,15 @@ end
 
 function svg_color_class_from_label(label::AbstractString)
     return @sprintf("color_%s", escape_id(label))
+end
+
+
+"""
+A faster map function for PooledDataVector
+"""
+function pooled_map(T::Type, f::Function, xs::PooledDataVector)
+    newpool = T[f(x) for x in xs.pool]
+    return T[newpool[i] for i in xs.refs]
 end
 
 
@@ -464,65 +473,6 @@ if VERSION < v"0.4-dev"
 else
     using Base.Dates
 end
-
-
-# TODO: This is a clusterfuck. I should really just wrap Date types to force
-# them to behave how I want.
-
-if !method_exists(/, (Dates.Day, Dates.Day))
-    /(a::Dates.Day, b::Dates.Day) = a.value / b.value
-end
-
-if VERSION < v"0.4.0-dev"
-    Base.convert(::Type{Dates.Millisecond}, d::Dates.Day) =
-        Dates.Millisecond(24 * 60 * 60 * 1000 * Dates.value(d))
-end
-
-if !method_exists(/, (Dates.Day, Real))
-    /(a::Dates.Day, b::Real) = Dates.Day(round(Integer, (a.value / b)))
-end
-/(a::Dates.Day, b::AbstractFloat) = convert(Dates.Millisecond, a) / b
-
-if !method_exists(/, (Dates.Millisecond, Dates.Millisecond))
-    /(a::Dates.Millisecond, b::Dates.Millisecond) = a.value / b.value
-end
-
-if !method_exists(/, (Dates.Millisecond, Real))
-    /(a::Dates.Millisecond, b::Real) = Dates.Millisecond(round(Integer, (a.value / b)))
-end
-/(a::Dates.Millisecond, b::AbstractFloat) = Dates.Millisecond(round(Integer, (a.value / b)))
-
-
-if !method_exists(-, (Dates.Date, Dates.DateTime))
-    -(a::Dates.Date, b::Dates.DateTime) = convert(Dates.DateTime, a) - b
-end
-
-+(a::Dates.Date, b::Dates.Millisecond) = convert(Dates.DateTime, a) + b
-
-if !method_exists(-, (Dates.DateTime, Dates.Date))
-    -(a::Dates.DateTime, b::Dates.Date) = a - convert(Dates.DateTime, b)
-end
-
-
-if !method_exists(/, (Dates.Day, Dates.Millisecond))
-    /(a::Dates.Day, b::Dates.Millisecond) = convert(Dates.Millisecond, a) / b
-end
-
-for T in [Dates.Hour, Dates.Minute, Dates.Second, Dates.Millisecond]
-    if !method_exists(-, (Dates.Date, T))
-        @eval begin
-            -(a::Dates.Date, b::$(T)) = convert(Dates.DateTime, a) - b
-        end
-    end
-end
-
-
-#if !method_exists(*, (AbstractFloat, Dates.Day))
-    *(a::AbstractFloat, b::Dates.Day) = Dates.Day(round(Integer, (a * b.value)))
-    *(a::Dates.Day, b::AbstractFloat) = b * a
-    *(a::AbstractFloat, b::Dates.Millisecond) = Dates.Millisecond(round(Integer, (a * b.value)))
-    *(a::Dates.Millisecond, b::AbstractFloat) = b * a
-#end
 
 
 # Arbitrarily order colors

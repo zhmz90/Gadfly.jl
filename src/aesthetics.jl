@@ -15,6 +15,7 @@ typealias NumericalAesthetic
     y,            @compat(Union{NumericalOrCategoricalAesthetic, Distribution})
     z,            @compat(Union{(@compat Void), Function, Matrix})
     size,         Maybe(Vector{Measure})
+    shape,        CategoricalAesthetic
     color,        Maybe(@compat(Union{AbstractVector{RGBA{Float32}},
                               AbstractVector{RGB{Float32}}}))
     label,        CategoricalAesthetic
@@ -446,6 +447,12 @@ function by_xy_group{T <: @compat(Union{Data, Aesthetics})}(aes::T, xgroup, ygro
     aes_grid
 end
 
+function inherit(a::Aesthetics, b::Aesthetics;
+                 clobber=[])
+    acopy = copy(a)
+    inherit!(acopy, b, clobber=clobber)
+    return acopy
+end
 
 function inherit!(a::Aesthetics, b::Aesthetics;
                   clobber=[])

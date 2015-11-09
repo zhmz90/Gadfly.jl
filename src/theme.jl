@@ -195,6 +195,13 @@ end
     # True if bars in bar plots should be stroked. Stroke color is
     bar_highlight,         @compat(Union{(@compat Void), Function, Color}),   nothing
 
+    # Symbol forms used for the shape aesthetic
+    shapes,               Vector{Function},  [circle, square, diamond, cross,
+                                              xcross, utriangle, dtriangle,
+                                              star1, star2, hexagon, octagon]
+
+    rug_size,             Measure,          2.0mm
+
     # TODO: This stuff is too incomprehensible to be in theme, I think. Put it
     # somewhere else.
 

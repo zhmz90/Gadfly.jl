@@ -24,6 +24,13 @@ default_statistic(::LabelGeometry) = Gadfly.Stat.identity()
 const label = LabelGeometry
 
 
+# True if two boxes overlap
+function overlaps(a::Absolute2DBox, b::Absolute2DBox)
+    a.x0[1] + a.a[1] >= b.x0[1] && a.x0[1] <= b.x0[1] + b.a[1] &&
+    a.x0[2] + a.a[2] >= b.x0[2] && a.x0[2] <= b.x0[2] + b.a[2]
+end
+
+
 # A deferred context function for labeling points in a plot. Optimizing label
 # placement depends on knowing the absolute size of the containing context.
 function deferred_label_context(geom::LabelGeometry,
@@ -45,38 +52,35 @@ function deferred_label_context(geom::LabelGeometry,
     units = drawctx.units
     parent_box = drawctx.box
 
-    canvas_width, canvas_height = parent_box.width, parent_box.height
+    canvas_width, canvas_height = parent_box.a[1], parent_box.a[2]
 
     # This should maybe go in theme? Or should we be using Aesthetics.size?
     padding = 2mm
 
-    point_positions = Array(Tuple, 0)
+    point_positions = Array(AbsoluteVec2, 0)
     for (x, y) in zip(aes.x, aes.y)
-        x = Compose.absolute_x_position(Compose.x_measure(x), parent_transform, units,
-                                        parent_box)
-        y = Compose.absolute_y_position(Compose.y_measure(y), parent_transform, units,
-                                        parent_box)
-        x -= parent_box.x0
-        y -= parent_box.y0
+        x = Compose.resolve_position(parent_box, units, parent_transform, Compose.x_measure(x))
+        y = Compose.resolve_position(parent_box, units, parent_transform, Compose.y_measure(y))
+        x -= parent_box.x0[1]
+        y -= parent_box.x0[2]
         push!(point_positions, (x, y))
     end
 
     extents = text_extents(theme.point_label_font,
                            theme.point_label_font_size,
                            aes.label...)
-    extents = [(width + padding, height + padding)
-               for (width, height) in extents]
+    extents = AbsoluteVec2[(width + padding, height + padding)
+                           for (width, height) in extents]
 
-    positions = Gadfly.Maybe(AbsoluteBoundingBox)[]
+    positions = Absolute2DBox[]
     for (i, (text_width, text_height)) in enumerate(extents)
         x, y = point_positions[i]
-        push!(positions, AbsoluteBoundingBox(
-                x, y, text_width.abs, text_height.abs))
+        push!(positions, Absolute2DBox((x, y), (text_width, text_height)))
     end
 
     # TODO: use Aesthetics.size and/or theme.default_point_size
     for (x, y) in point_positions
-        push!(positions, AbsoluteBoundingBox(x - 0.5, y - 0.5, 1.0, 1.0))
+        push!(positions, Absolute2DBox((x - 0.5mm, y - 0.5mm), (1.0mm, 1.0mm)))
         push!(extents, (1mm, 1mm))
     end
 
@@ -84,30 +88,15 @@ function deferred_label_context(geom::LabelGeometry,
 
     # Return a box containing every point that the label could possibly overlap.
     function max_extents(i)
-        AbsoluteBoundingBox(positions[i].x0 - extents[i][1].abs,
-                            positions[i].y0 - extents[i][2].abs,
-                            2*extents[i][1].abs,
-                            2*extents[i][2].abs)
-    end
-
-    # True if two boxes overlap
-    function overlaps(a, b)
-        if a === nothing || b === nothing
-            return false
-        end
-
-        a.x0 + a.width  >= b.x0 && a.x0 <= b.x0 + b.width &&
-        a.y0 + a.height >= b.y0 && a.y0 <= b.y0 + b.height
+        Absolute2DBox((positions[i].x0[1] - extents[i][1],
+                       positions[i].x0[2] - extents[i][2]),
+                       (2*extents[i][1], 2*extents[i][2]))
     end
 
     # True if a is fully contained in box.
-    function box_contains(a)
-        if a === nothing
-            return true
-        end
-
-        0 < a.x0 && a.x0 + a.width < parent_box.width &&
-        0 < a.y0 - a.height && a.y0 < parent_box.height
+    function box_contains(a::Absolute2DBox)
+        0mm < a.x0[1] && a.x0[1] + a.a[1] < parent_box.a[1] &&
+        0mm < a.x0[2] - a.a[2] && a.x0[2] < parent_box.a[2]
     end
 
     # Checking for label overlaps is O(n^2). To mitigate these costs, we build a
@@ -143,7 +132,7 @@ function deferred_label_context(geom::LabelGeometry,
     # This variable holds the value of the objective function we wish to
     # minimize. A label overlap is a penalty of 1. Other penaties (out of bounds
     # labels, hidden labels) or calibrated to that.
-    total_penalty = 0
+    total_penalty = 0.0
 
     for i in 1:n
         if !box_contains(positions[i])
@@ -169,11 +158,14 @@ function deferred_label_context(geom::LabelGeometry,
         j = rand(1:n)
 
         new_total_penalty = total_penalty
+        pos = BoundingBox(0mm, 0mm, 0mm, 0mm)
+        propose_hide = false
 
         # Propose flipping the visibility of the label.
         if label_visibility[j] && geom.hide_overlaps && rand() < theme.label_visibility_flip_pr
-            pos = nothing
             new_total_penalty += theme.label_hidden_penalty
+
+            propose_hide = true
 
         # Propose a change to label placement.
         else
@@ -183,9 +175,11 @@ function deferred_label_context(geom::LabelGeometry,
 
             r = rand()
             point_x, point_y = point_positions[j]
-            xspan = extents[j][1].abs
-            yspan = extents[j][2].abs
+            xspan = extents[j][1]
+            yspan = extents[j][2]
 
+            # TODO: it doesn't know what xspan, yspan are. That's the major
+            # source of slowness.
             if rand() < 0.5
                 xpos = Gadfly.lerp(rand(),
                                    (point_x - 7xspan/8),
@@ -202,17 +196,17 @@ function deferred_label_context(geom::LabelGeometry,
 
             # choose a side
             if r < 0.25 # top
-                pos = AbsoluteBoundingBox(xpos, point_y - extents[j][2].abs,
-                                          extents[j][1].abs, extents[j][2].abs)
+                pos = Absolute2DBox((xpos, point_y - extents[j][2]),
+                                    (extents[j][1], extents[j][2]))
             elseif 0.25 <= r < 0.5 # right
-                pos = AbsoluteBoundingBox(point_x, ypos,
-                                          extents[j][1].abs, extents[j][2].abs)
+                pos = Absolute2DBox((point_x, ypos),
+                                    (extents[j][1], extents[j][2]))
             elseif 0.5 <= r < 0.75 # bottom
-                pos = AbsoluteBoundingBox(xpos, point_y,
-                                          extents[j][1].abs, extents[j][2].abs)
+                pos = Absolute2DBox((xpos, point_y),
+                                    (extents[j][1], extents[j][2]))
             else # left
-                pos = AbsoluteBoundingBox(point_x - extents[j][1].abs, ypos,
-                                          extents[j][1].abs, extents[j][2].abs)
+                pos = Absolute2DBox((point_x - extents[j][1], ypos),
+                                    (extents[j][1], extents[j][2]))
             end
         end
 
@@ -220,17 +214,17 @@ function deferred_label_context(geom::LabelGeometry,
             new_total_penalty -= theme.label_out_of_bounds_penalty
         end
 
-        if !box_contains(pos)
+        if !propose_hide && !box_contains(pos)
             new_total_penalty += theme.label_out_of_bounds_penalty
         end
 
         for i in possible_overlaps[j]
-            if overlaps(positions[i], positions[j]) &&
-                    label_visibility[i] && label_visibility[j]
+            if label_visibility[i] && label_visibility[j] &&
+                overlaps(positions[i], positions[j])
                 new_total_penalty -= 1
             end
 
-            if overlaps(positions[i], pos) && label_visibility[i]
+            if  label_visibility[i] && overlaps(positions[i], pos)
                 new_total_penalty += 1
             end
         end
@@ -239,7 +233,7 @@ function deferred_label_context(geom::LabelGeometry,
 
         T = 0.1 * (1.0 - (k / (1 + num_iterations)))
         if improvement >= 0 || rand() < exp(improvement / T)
-            if pos === nothing
+            if propose_hide
                 label_visibility[j] = false
             else
                 label_visibility[j] = true
@@ -252,8 +246,8 @@ function deferred_label_context(geom::LabelGeometry,
 
     return compose!(
         context(),
-        text([(positions[i].x0 + extents[i][1].abs/2)*mm for i in 1:n],
-             [(positions[i].y0 + extents[i][2].abs/2)*mm for i in 1:n],
+        text([positions[i].x0[1] + extents[i][1]/2 + parent_box.x0[1] for i in 1:n],
+             [positions[i].x0[2] + extents[i][2]/2 + parent_box.x0[2] for i in 1:n],
              aes.label,
              [hcenter], [vcenter]; tag=geom.tag),
         visible(label_visibility),

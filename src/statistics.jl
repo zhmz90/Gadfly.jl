@@ -66,11 +66,12 @@ function barminmax(values, iscontinuous::Bool)
 
     if iscontinuous && length(values) > 1
         sorted_values = sort(values)
-        z = sorted_values[2] - sorted_values[1]
+        T = typeof(sorted_values[2] - sorted_values[1])
+        z = zero(T)
         minspan = z
         for i in 2:length(values)
             span = sorted_values[i] - sorted_values[i-1]
-            if minspan == z || span > z && span < minspan
+            if span > z && (span < minspan || minspan == z)
                 minspan = span
             end
         end
@@ -1739,6 +1740,8 @@ function minimum_span(vars::Vector{Symbol}, aes::Gadfly.Aesthetics)
             span = dataspan
         end
     end
+
+    return span
 end
 
 
@@ -1803,7 +1806,7 @@ function apply_statistic(stat::BinMeanStatistic,
         groups = Dict()
         for (x, y, c) in zip(aes.x, aes.y, cycle(aes.color))
             if !haskey(groups, c)
-                groups[c] = Array[[Tx[x]], [Ty[y]]]
+                groups[c] = Array[collect(Tx, x), collect(Ty, y)]
             else
                 push!(groups[c][1], x)
                 push!(groups[c][2], y)
